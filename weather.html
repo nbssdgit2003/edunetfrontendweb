@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Weather Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom Keyframes and Base Styles */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+            animation: fadeIn 0.8s ease-in-out;
+        }
+        /* Dynamic Background (Initial Default) */
+        .bg-weather-default {
+            background-color: #3b82f6; /* Blue for clear day */
+            background-image: linear-gradient(135deg, #3b82f6 0%, #a78bfa 100%);
+            transition: all 1.5s ease-in-out;
+        }
+        /* Card Styles */
+        .weather-card {
+            background: rgba(255, 255, 255, 0.15); /* Semi-transparent white */
+            backdrop-filter: blur(15px); /* Stronger blur for glass effect */
+            border: 1px solid rgba(255, 255, 255, 0.3); /* Light border for definition */
+            color: white;
+        }
+        /* Detail Grid Styles */
+        .detail-item {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+            padding: 1rem;
+        }
+        /* Search Box Focus */
+        .search-box input:focus {
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.5);
+        }
+
+        /* --- Dynamic Background Classes (for JS) --- */
+        .bg-weather-rain { background-image: linear-gradient(135deg, #1e40af 0%, #4b5563 100%); }
+        .bg-weather-clear { background-image: linear-gradient(135deg, #3b82f6 0%, #a78bfa 100%); }
+        .bg-weather-clouds { background-image: linear-gradient(135deg, #6b7280 0%, #9ca3af 100%); }
+        .bg-weather-snow { background-image: linear-gradient(135deg, #bfdbfe 0%, #9ca3af 100%); }
+        .bg-weather-thunderstorm { background-image: linear-gradient(135deg, #1f2937 0%, #4b5563 100%); }
+        .bg-weather-drizzle { background-image: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%); }
+
+    </style>
+</head>
+<body class="bg-weather-default min-h-screen flex items-center justify-center p-4 transition-all duration-1000" id="bodyElement">
+    <div class="container weather-card max-w-xl w-full rounded-3xl shadow-2xl p-6 md:p-10 animate-fadeIn">
+        <h1 class="text-4xl font-extrabold text-white text-center mb-8 tracking-wider">Weather Hub 🌤️</h1>
+        
+        <div class="search-box flex justify-center mb-8">
+            <input 
+                type="text" 
+                id="cityInput" 
+                placeholder="Enter city name" 
+                class="p-4 w-3/4 rounded-l-2xl border-none text-gray-800 outline-none placeholder-gray-500 text-lg transition duration-300"
+                onkeypress="if(event.keyCode === 13) getWeatherByCity()"
+            >
+            <button 
+                onclick="getWeatherByCity()" 
+                class="p-4 bg-white text-indigo-600 rounded-r-2xl font-semibold hover:bg-gray-100 transition duration-300 shadow-md"
+            >
+                Search
+            </button>
+        </div>
+
+        <div class="weather-info hidden text-center" id="weatherInfo">
+            <h2 id="cityName" class="text-4xl font-bold mb-2"></h2>
+            <p id="weatherDescription" class="text-xl italic mb-4 opacity-80"></p>
+            
+            <div class="flex items-center justify-center mb-6">
+                <img id="weatherIcon" src="" alt="Weather Icon" class="w-28 h-28 drop-shadow-lg">
+                <p id="temperature" class="text-6xl font-light ml-4 tracking-tight"></p>
+            </div>
+
+            <div class="grid grid-cols-3 gap-4 text-center mt-6">
+                <div class="detail-item">
+                    <p class="text-sm opacity-75">Humidity</p>
+                    <p id="humidity" class="text-2xl font-semibold mt-1"></p>
+                </div>
+                <div class="detail-item">
+                    <p class="text-sm opacity-75">Wind</p>
+                    <p id="windSpeed" class="text-2xl font-semibold mt-1"></p>
+                </div>
+                <div class="detail-item">
+                    <p class="text-sm opacity-75">Feels Like</p>
+                    <p id="feelsLike" class="text-2xl font-semibold mt-1"></p>
+                </div>
+            </div>
+        </div>
+
+        <p class="error text-red-300 text-center mt-4 hidden text-lg font-medium" id="errorMessage">
+            City not found. Please enter a valid location. 📍
+        </p>
+
+        <div class="text-center mt-8 hidden" id="loadingIndicator">
+            <div class="w-8 h-8 border-4 border-t-4 border-white border-opacity-30 rounded-full animate-spin mx-auto"></div>
+            <p class="text-white mt-2">Fetching weather...</p>
+        </div>
+    </div>
+
+    <script>
+        const apiKey = 'a83cc7338622268d786a944461a9a20e'; // Replace with your OpenWeatherMap API key
+        const apiBaseUrl = 'https://api.openweathermap.org/data/2.5/weather';
+        const bodyElement = document.getElementById('bodyElement');
+        const weatherInfoElement = document.getElementById('weatherInfo');
+        const errorMessageElement = document.getElementById('errorMessage');
+        const loadingIndicatorElement = document.getElementById('loadingIndicator');
+
+        // Function to set the dynamic background based on weather condition
+        function setDynamicBackground(weatherCondition) {
+            // Remove all existing background classes
+            bodyElement.className = bodyElement.className.split(' ').filter(c => !c.startsWith('bg-weather-')).join(' ');
+
+            // Map weather condition to a specific background class
+            let bgClass = 'bg-weather-default';
+            const condition = weatherCondition.toLowerCase();
+
+            if (condition.includes('rain') || condition.includes('drizzle')) {
+                bgClass = 'bg-weather-rain';
+            } else if (condition.includes('clear')) {
+                bgClass = 'bg-weather-clear';
+            } else if (condition.includes('cloud') || condition.includes('mist') || condition.includes('haze')) {
+                bgClass = 'bg-weather-clouds';
+            } else if (condition.includes('snow')) {
+                bgClass = 'bg-weather-snow';
+            } else if (condition.includes('thunderstorm')) {
+                bgClass = 'bg-weather-thunderstorm';
+            }
+
+            // Add the new dynamic background class
+            bodyElement.classList.add(bgClass);
+        }
+
+
+        // Fetch weather by city name
+        async function getWeatherByCity() {
+            const city = document.getElementById('cityInput').value.trim();
+            if (!city) return;
+
+            weatherInfoElement.classList.add('hidden');
+            errorMessageElement.classList.add('hidden');
+            loadingIndicatorElement.classList.remove('hidden');
+
+            try {
+                const response = await fetch(`${apiBaseUrl}?q=${city}&appid=${apiKey}&units=metric`);
+                const data = await response.json();
+                
+                loadingIndicatorElement.classList.add('hidden');
+
+                if (data.cod === 200) {
+                    displayWeather(data);
+                    weatherInfoElement.classList.remove('hidden');
+                } else {
+                    showError();
+                }
+            } catch (error) {
+                loadingIndicatorElement.classList.add('hidden');
+                showError();
+            }
+        }
+
+        // Fetch weather by geolocation
+        function getWeatherByLocation(position) {
+            const { latitude, longitude } = position.coords;
+
+            loadingIndicatorElement.classList.remove('hidden');
+
+            fetch(`${apiBaseUrl}?lat=${latitude}&lon=${longitude}&appid=${apiKey}&units=metric`)
+                .then(response => response.json())
+                .then(data => {
+                    loadingIndicatorElement.classList.add('hidden');
+                    if (data.cod === 200) {
+                        displayWeather(data);
+                        weatherInfoElement.classList.remove('hidden');
+                    } else {
+                        // On failed geo-lookup, just hide the loading and wait for city search
+                        loadingIndicatorElement.classList.add('hidden');
+                    }
+                })
+                .catch(() => {
+                    // On error, just hide the loading and wait for city search
+                    loadingIndicatorElement.classList.add('hidden');
+                });
+        }
+
+        // Display weather data
+        function displayWeather(data) {
+            const description = data.weather[0].description.charAt(0).toUpperCase() + data.weather[0].description.slice(1);
+
+            document.getElementById('cityName').textContent = data.name;
+            document.getElementById('weatherDescription').textContent = description;
+            document.getElementById('weatherIcon').src = `http://openweathermap.org/img/wn/${data.weather[0].icon}@2x.png`;
+            document.getElementById('temperature').innerHTML = `${Math.round(data.main.temp)}<span class="text-3xl font-light align-top ml-1">°C</span>`;
+            document.getElementById('humidity').textContent = `${data.main.humidity}%`;
+            document.getElementById('windSpeed').textContent = `${data.wind.speed} m/s`;
+            document.getElementById('feelsLike').textContent = `${Math.round(data.main.feels_like)}°C`;
+            
+            // Set the dynamic background
+            setDynamicBackground(data.weather[0].main);
+        }
+
+        // Show error message
+        function showError() {
+            weatherInfoElement.classList.add('hidden');
+            errorMessageElement.classList.remove('hidden');
+        }
+
+        // Get user's location on page load
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(getWeatherByLocation, () => {
+                // If geolocation fails or is denied, just hide the loading indicator
+                loadingIndicatorElement.classList.add('hidden');
+            });
+        } else {
+            // Browser doesn't support geolocation
+            loadingIndicatorElement.classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
